@@ -3,9 +3,9 @@ include ../config.mk
 CPPFLAGS := -I../include
 LIBTOOL_VERSION := $(LIBTOOL_CURRENT):$(LIBTOOL_REVISION):$(LIBTOOL_AGE)
 OBJS := $(patsubst %.c,%.lo,$(wildcard *.c))
-HEADERS := $(wildcard ../include/*.h)
+HEADERS := $(wildcard ../include/*.h *.h)
 LIBRARY := $(PROJECT).la
-LDFLAGS := `pkg-config --libs libgends`
+LDFLAGS := `pkg-config --libs libgends lll`
 
 .PHONY: clean
 

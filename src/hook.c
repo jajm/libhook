@@ -4,6 +4,7 @@
 #include <libgends/slist.h>
 #include <libgends/hash_map_keyin.h>
 #include "hook.h"
+#include "log.h"
 
 #define HOOKS_MAP_SIZE 512
 
@@ -19,14 +20,14 @@ hook_callback_t * hook_callback_new(const char *id, hook_callback_cb callback)
 
 	hook_callback = malloc(sizeof(hook_callback_t));
 	if (hook_callback == NULL) {
-		fprintf(stderr, "Memory allocation error\n");
+		hook_log_error("Memory allocation error");
 		return NULL;
 	}
 
 	len = strlen(id);
 	hook_callback->id = malloc(sizeof(char) * (len+1));
 	if (hook_callback->id == NULL) {
-		fprintf(stderr, "Memory allocation error\n");
+		hook_log_error("Memory allocation error");
 		free(hook_callback);
 		return NULL;
 	}
@@ -59,14 +60,14 @@ hook_t * hook_new(const char *name, int has_return_value, int num_params)
 
 	hook = malloc(sizeof(hook_t));
 	if (hook == NULL) {
-		fprintf(stderr, "Memory allocation error\n");
+		hook_log_error("Memory allocation error");
 		return NULL;
 	}
 
 	len = strlen(name);
 	hook->name = malloc(sizeof(char) * (len+1));
 	if (hook->name == NULL) {
-		fprintf(stderr, "Memory allocation error\n");
+		hook_log_error("Memory allocation error");
 		free(hook);
 		return NULL;
 	}
@@ -132,7 +133,7 @@ int hook_register(char *hook_name, int has_return_value, int num_params)
 
 	hook = gds_hash_map_keyin_get(hooks, hook_name);
 	if (hook != NULL) {
-		fprintf(stderr, "Hook '%s' already registered\n", hook_name);
+		hook_log_warning("Hook '%s' already registered", hook_name);
 		return -1;
 	}
 
