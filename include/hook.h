@@ -1,8 +1,8 @@
 #ifndef libhook_hook_h_included
 #define libhook_hook_h_included
 
+#include <string.h>
 #include <libgends/slist.h>
-#include <libgends/foreach.h>
 
 /**
  * Register a callback function for a hook.
@@ -51,7 +51,9 @@ int hook_unregister(char *hook_name, const char *callback_id);
 	gds_slist_node_t *callbacks = hook_callbacks(hook_name); \
 	hook_callback_t *callback; \
 	gds_iterator_t *it = gds_slist_iterator_new(callbacks); \
-	foreach (callback, it) { \
+	gds_iterator_reset(it); \
+	while (!gds_iterator_step(it)) { \
+		callback = gds_iterator_get(it); \
 		if (strcmp(#__VA_ARGS__, "") == 0) { \
 			void *(*func)(void); \
 			hook_invoke_call(callback, func, r); \
