@@ -2,18 +2,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <libgends/slist.h>
-#include <libgends/hash_map_keyin.h>
+#include <libgends/hash_map.h>
 #include "hook.h"
 #include "log.h"
 
 #define HOOKS_MAP_SIZE 512
 
-typedef struct {
+struct hook_callback_s {
 	char *id;
-	hook_callback_cb callback;
-} hook_callback_t;
+	const void *func;
+};
 
-hook_callback_t * hook_callback_new(const char *id, hook_callback_cb callback)
+hook_callback_t * hook_callback_new(const char *id, const void *func)
 {
 	hook_callback_t *hook_callback;
 	size_t len;
@@ -33,9 +33,19 @@ hook_callback_t * hook_callback_new(const char *id, hook_callback_cb callback)
 	}
 
 	strncpy(hook_callback->id, id, len+1);
-	hook_callback->callback = callback;
+	hook_callback->func = func;
 
 	return hook_callback;
+}
+
+const char * hook_callback_id(hook_callback_t *hook_callback)
+{
+	return hook_callback ? hook_callback->id : NULL;
+}
+
+const void * hook_callback_func(hook_callback_t *hook_callback)
+{
+	return hook_callback ? hook_callback->func : NULL;
 }
 
 void hook_callback_free(hook_callback_t *hook_callback)
@@ -46,50 +56,7 @@ void hook_callback_free(hook_callback_t *hook_callback)
 	}
 }
 
-typedef struct {
-	char *name;
-	int has_return_value;
-	int num_params;
-	gds_slist_node_t * callbacks;
-} hook_t;
-
-hook_t * hook_new(const char *name, int has_return_value, int num_params)
-{
-	hook_t *hook;
-	size_t len;
-
-	hook = malloc(sizeof(hook_t));
-	if (hook == NULL) {
-		hook_log_error("Memory allocation error");
-		return NULL;
-	}
-
-	len = strlen(name);
-	hook->name = malloc(sizeof(char) * (len+1));
-	if (hook->name == NULL) {
-		hook_log_error("Memory allocation error");
-		free(hook);
-		return NULL;
-	}
-
-	strncpy(hook->name, name, len+1);
-	hook->has_return_value = has_return_value;
-	hook->num_params = num_params;
-	hook->callbacks = NULL;
-
-	return hook;
-}
-
-void hook_free(hook_t *hook)
-{
-	if (hook) {
-		free(hook->name);
-		gds_slist_free(hook->callbacks, (gds_free_cb) hook_callback_free);
-		free(hook);
-	}
-}
-
-static gds_hash_map_keyin_t * hooks = NULL;
+static gds_hash_map_t * hooks = NULL;
 
 unsigned int hooks_hash_cb(const char *name, unsigned int size)
 {
@@ -103,47 +70,112 @@ unsigned int hooks_hash_cb(const char *name, unsigned int size)
 	return hash % size;
 }
 
-const char * hooks_getkey_cb(hook_t *hook)
-{
-	if (hook) return hook->name;
-	
-	return NULL;
-}
-
 int hooks_cmpkey_cb(const char *name1, const char *name2)
 {
 	return strcmp(name1, name2);
 }
 
-void hook_init()
+void hook_check_init()
 {
 	if (hooks == NULL) {
-		hooks = gds_hash_map_keyin_new(HOOKS_MAP_SIZE,
+		hooks = gds_hash_map_new(HOOKS_MAP_SIZE,
 			(gds_hash_cb) hooks_hash_cb,
-			(gds_getkey_cb) hooks_getkey_cb,
 			(gds_cmpkey_cb) hooks_cmpkey_cb);
 	}
 }
 
-int hook_register(char *hook_name, int has_return_value, int num_params)
+int hook_get_callback_position(gds_slist_node_t *callbacks, const char *callback_id)
 {
-	hook_t *hook = NULL;
+	gds_iterator_t *it;
+	int position = -1;
 
-	hook_init();
-
-	hook = gds_hash_map_keyin_get(hooks, hook_name);
-	if (hook != NULL) {
-		hook_log_warning("Hook '%s' already registered", hook_name);
-		return -1;
+	hook_callback_t *tmp;
+	int i = 0;
+	it = gds_slist_iterator_new(callbacks);
+	gds_iterator_reset(it);
+	while (!gds_iterator_step(it)) {
+		tmp = gds_iterator_get(it);
+		if (tmp && !strcmp(tmp->id, callback_id)) {
+			position = i;
+			break;
+		}
+		i++;
 	}
+	gds_iterator_free(it);
 
-	hook = hook_new(hook_name, has_return_value, num_params);
-	gds_hash_map_keyin_set(hooks, hook, NULL);
-
-	return 0;
+	return position;
 }
 
-int hook_unregister(char *hook_name)
+int hook_register(char *hook_name, const char *callback_id, const void *callback_func)
 {
-	return gds_hash_map_keyin_unset(hooks, hook_name, (gds_free_cb) hook_free);
+	hook_callback_t *hook_callback;
+	gds_slist_node_t *callbacks;
+	int ret = 0;
+
+	hook_check_init();
+
+	callbacks = gds_hash_map_get(hooks, hook_name);
+	int pos = hook_get_callback_position(callbacks, callback_id);
+	if (pos == -1) {
+		hook_callback = hook_callback_new(callback_id, callback_func);
+		gds_slist_add_last(&callbacks, hook_callback);
+		ret = gds_hash_map_set(hooks, hook_name, callbacks, NULL);
+		if (ret < 0) {
+			hook_log_error("Failed to register callback '%s' for "
+				"hook '%s'", callback_id, hook_name);
+		} else {
+			ret = 0;
+			hook_log_info("Registered callback '%s' for hook '%s'",
+				callback_id, hook_name);
+		}
+	} else {
+		hook_log_warning("Callback '%s' is already registered "
+			"for hook '%s'", callback_id, hook_name);
+		ret = 1;
+	}
+
+	return ret;
+}
+
+int hook_unregister(char *hook_name, const char *callback_id)
+{
+	gds_slist_node_t *callbacks;
+	int position;
+	int ret = 0;
+
+	hook_check_init();
+
+	callbacks = gds_hash_map_get(hooks, hook_name);
+	position = hook_get_callback_position(callbacks, callback_id);
+	if (position < 0) {
+		hook_log_warning("Callback '%s' is not registered for hook '%s'",
+			callback_id, hook_name);
+		ret = 1;
+	} else {
+		if (position == 0) {
+			gds_slist_del_first(&(callbacks), (gds_free_cb)hook_callback_free);
+			gds_hash_map_set(hooks, hook_name, callbacks, NULL);
+		} else {
+			gds_slist_node_t *slist_node = gds_slist_get_nth_node(
+				callbacks, position - 1);
+			ret = gds_slist_del_after(slist_node, (gds_free_cb)hook_callback_free);
+		}
+
+		if (ret != 0) {
+			hook_log_error("Failed to unregister callback '%s' "
+				"for hook '%s'", callback_id, hook_name);
+		} else {
+			hook_log_info("Unregistered callback '%s' for hook "
+				"'%s'", callback_id, hook_name);
+		}
+	}
+
+	return ret;
+}
+
+gds_slist_node_t * hook_callbacks(char *hook_name)
+{
+	hook_check_init();
+
+	return gds_hash_map_get(hooks, hook_name);
 }
