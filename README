@@ -1,0 +1,83 @@
+libhook is a simple hook system for C.
+======================================
+
+Introduction
+------------
+
+To use it, you only need to remember two function names: hook_register and
+hook_invoke.
+
+Registering a hook is as simple as saying "Hello":
+
+  hook_register("hook name", "callback 1", callback1);
+
+This mean “Hey, register my callback function "callback1()" named "callback 1"
+to hook "hook name"”.
+If you want to register another callback for the same hook, same thing:
+
+  hook_register("hook name", "callback 2", callback2);
+
+Now you have two callbacks for this hook ("hook name"), you can invoke it:
+
+  hook_invoke("hook name", NULL);
+
+Callback functions will be called in the order they have been registered.
+Pretty simple, isn't it? (more documentation can be found at the end of this
+document)
+
+Installation
+------------
+
+libhook requires two external libraries:
+- lll: https://github.com/jajm/lll
+- libgends: https://github.com/jajm/libgends
+Please install them before installing libhook.
+
+To install, just cd into libhook directory and run
+  make
+  make install # you may need root privileges for this
+
+You can configure the install location by editing config.mk (PREFIX)
+
+
+Documentation
+=============
+
+Return values
+-------------
+
+Callback functions may have return values. They can be retrieved through the
+second parameter of hook_invoke.
+
+  gds_slist_node_t *return_values = NULL;
+  hook_invoke("hook name", &return_values);
+  /* return_values is a list. To iterate over it, see libgends documentation */
+
+If second parameter of hook_invoke is NULL, return values are simply ignored.
+
+Callback function parameters
+----------------------------
+
+To pass parameters to callback functions, just pass it to hook_invoke.
+
+  hook_invoke("hook name", NULL, param1, param2);
+
+This is equivalent to
+
+  callback1(param1, param2);
+  callback2(param1, param2);
+
+Note that if callback functions takes more parameters than the number of
+parameters passed to hook_invoke, the extra parameters values are undefined.
+
+libhook logs
+------------
+
+By default, libhook verbosity is 0. It means that it prints nothing.
+To increase verbosity change the value of env variable LIBHOOK_VERBOSITY.
+Verbosity levels are:
+- 1: error
+- 2: warning
+- 3: info
+- 4: debug
+Each level include lower levels.
