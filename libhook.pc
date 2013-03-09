@@ -1,0 +1,9 @@
+prefix=/usr/local
+libdir=${prefix}/lib
+includedir=${prefix}/include/libhook
+
+Name: libhook
+Description: libhook provides a simple hook system
+Version: 0.0.0
+Libs: -L${libdir} -lhook
+Cflags: -I${includedir}

@@ -18,3 +18,5 @@ $(PROGRAMS): % : %.o $(LIBRARY)
 
 clean:
 	rm -rf $(OBJS) $(PROGRAMS)
+
+install:
